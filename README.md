@@ -8,6 +8,8 @@ Idea and patterns stolen from [ahmetb's kubectx](https://github.com/ahmetb/kubec
 
 # Usage
 
+`gcloud init` your configurations, then:
+
 ```
 gconf                    : list available configs
 gconf <NAME>             : activate config
