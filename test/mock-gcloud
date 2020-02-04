@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+[[ -n $DEBUG ]] && set -x
+
+set -eou pipefail
+CURRENT="${XDG_CACHE_HOME:-$HOME/.config/gcloud}/gconf_current"
+
+if [[ $@ == *'config configurations list --format'* ]]; then
+  echo "config1"
+  echo "config2"
+elif [[ $@ == *'config configurations list --filter'* ]]; then
+  cat ${CURRENT} || echo ""
+elif [[ $@ == *'config configurations activate config1'* ]]; then
+  echo "Activated [config1]."
+  echo "config1" > $CURRENT
+elif [[ $@ == *'config configurations activate config2'* ]]; then
+  echo "Activated [config2]."
+  echo "config2" > $CURRENT
+else
+  gcloud $@
+fi

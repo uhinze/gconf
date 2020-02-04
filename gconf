@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+[[ -n $DEBUG ]] && set -x
+
+set -eou pipefail
+IFS=$'\n\t'
+
+SELF_CMD="$0"
+
+GCONF="${XDG_CACHE_HOME:-$HOME/.config/gcloud}/gconf"
+
+usage() {
+  local SELF
+  SELF="gconf"
+
+  cat <<EOF
+USAGE:
+  $SELF                    : list available configs
+  $SELF <NAME>             : activate config
+  $SELF -                  : switch to previously active config
+  $SELF -h,--help          : show this message
+EOF
+}
+
+exit_err() {
+   echo >&2 "${1}"
+   exit 1
+}
+
+current_config() {
+  $GCLOUD config configurations list --filter="is_active=true" --format="value(name)"
+}
+
+get_configs() {
+  $GCLOUD config configurations list --format="value(name)"
+}
+
+list_configs() {
+  set -u pipefail
+  local cur cfg_list
+  cur="$(current_config)" || exit_err "error getting current config"
+  cfg_list=$(get_configs) || exit_err "error getting config list"
+
+  local yellow darkbg normal
+  yellow=$(tput setaf 3 || true)
+  darkbg=$(tput setab 0 || true)
+  normal=$(tput sgr0 || true)
+
+  local cur_cfg_fg cur_cfg_bg
+  cur_cfg_fg=${GCONF_CURRENT_FGCOLOR:-$yellow}
+  cur_cfg_bg=${GCONF_CURRENT_BGCOLOR:-$darkbg}
+
+  for c in $cfg_list; do
+  if [[ -n "${_GCONF_FORCE_COLOR:-}" || \
+       -t 1 && -z "${NO_COLOR:-}" ]]; then
+    # colored output mode
+    if [[ "${c}" = "${cur}" ]]; then
+      echo "${cur_cfg_bg}${cur_cfg_fg}${c}${normal}"
+    else
+      echo "${c}"
+    fi
+  else
+    echo "${c}"
+  fi
+  done
+}
+
+read_config() {
+  if [[ -f "${GCONF}" ]]; then
+    cat "${GCONF}"
+  fi
+}
+
+save_config() {
+  local saved
+  saved="$(read_config)"
+
+  if [[ "${saved}" != "${1}" ]]; then
+    printf %s "${1}" > "${GCONF}"
+  fi
+}
+
+switch_config() {
+  $GCLOUD config configurations activate "${1}"
+}
+
+choose_config_interactive() {
+  local choice
+  choice="$(_GCONF_FORCE_COLOR=1 \
+    FZF_DEFAULT_COMMAND="${SELF_CMD}" \
+    fzf --ansi --no-preview || true)"
+  if [[ -z "${choice}" ]]; then
+    echo 2>&1 "error: you did not choose any of the options"
+    exit 1
+  else
+    set_config "${choice}"
+  fi
+}
+
+set_config() {
+  local prev
+  prev="$(current_config)" || exit_err "error getting current config"
+
+  switch_config "${1}"
+
+  if [[ "${prev}" != "${1}" ]]; then
+    save_config "${prev}"
+  fi
+}
+
+swap_config() {
+  local cfg
+  cfg="$(read_config)"
+  if [[ -z "${cfg}" ]]; then
+    echo "error: No previous config found." >&2
+    exit 1
+  fi
+  set_config "${cfg}"
+}
+
+# config_exists() {
+#   grep -q ^"${1}"\$ <($GCLOUD config configurations list)
+# }
+
+delete_configs() {
+  for i in "${@}"; do
+    delete_config "${i}"
+  done
+}
+
+delete_config() {
+  local cfg
+  cfg="${1}"
+  if [[ "${cfg}" == "." ]]; then
+    cfg="$(current_config)" || exit_err "error getting current config"
+  fi
+  echo "Deleting config \"${cfg}\"..." >&2
+  $GCLOUD config configurations delete "${cfg}"
+}
+
+main() {
+  if [[ -z "${GCLOUD:-}" ]]; then
+    if hash gcloud 2>/dev/null; then
+      GCLOUD=gcloud
+    elif hash gcloud.exe 2>/dev/null; then
+      GCLOUD=gcloud.exe
+    else
+      echo >&2 "gcloud is not installed"
+      exit 1
+    fi
+  fi
+
+  if [[ "$#" -eq 0 ]]; then
+    if [[ -t 1 &&  -z "${GCONF_IGNORE_FZF:-}" && "$(type fzf &>/dev/null; echo $?)" -eq 0 ]]; then
+      choose_config_interactive
+    else
+      list_configs
+    fi
+  elif [[ "${1}" == "-d" ]]; then
+    if [[ "$#" -lt 2 ]]; then
+      echo "error: missing config NAME" >&2
+      usage
+      exit 1
+    fi
+    delete_configs "${@:2}"
+  elif [[ "$#" -gt 1 ]]; then
+    echo "error: too many arguments" >&2
+    usage
+    exit 1
+  elif [[ "$#" -eq 1 ]]; then
+    if [[ "${1}" == "-" ]]; then
+      swap_config
+    elif [[ "${1}" == '-h' || "${1}" == '--help' ]]; then
+      usage
+    elif [[ "${1}" =~ ^-(.*) ]]; then
+      echo "error: unrecognized flag \"${1}\"" >&2
+      usage
+      exit 1
+    else
+      set_config "${1}"
+    fi
+  else
+    usage
+    exit 1
+  fi
+}
+
+main "$@"
