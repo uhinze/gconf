@@ -1,5 +1,6 @@
 # `gconf`: Switch `gcloud` configurations
 
+![CircleCI](https://img.shields.io/circleci/build/gh/uhinze/gconf/master)
 ![Proudly written in Bash](https://img.shields.io/badge/written%20in-bash-ff69b4.svg)
 
 Makes it easier to switch configurations in the `gcloud` CLI.
